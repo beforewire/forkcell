@@ -7,7 +7,7 @@ Raw machine-local evidence logs are intentionally not tracked in the public-prev
 
 - OpenShell runtime fork: `beforewire/openshell`.
 - Runtime branch: `forkcell-workspace-substrate`.
-- Runtime commit: `8717d17a1cff50204cdd139fa4bf1c262cbf5f85`.
+- Runtime commit: `393c25a86d9128ff5e38ecf537809efe58470266`.
 - ForkCell branch: `public-preview`.
 
 ## Validation Highlights

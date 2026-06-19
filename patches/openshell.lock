@@ -2,7 +2,7 @@ runtime:
   repo: https://github.com/beforewire/openshell
   branch: forkcell-workspace-substrate
   tag: forkcell-runtime-v0.1.3-preview
-  commit: 8717d17a1cff50204cdd139fa4bf1c262cbf5f85
+  commit: 393c25a86d9128ff5e38ecf537809efe58470266
 
 upstream:
   repo: https://github.com/NVIDIA/OpenShell

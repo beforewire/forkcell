@@ -1,0 +1,25 @@
+name: ForkCell Preview Smoke
+
+on:
+  push:
+    branches: [main, public-preview]
+  pull_request:
+    branches: [main, public-preview]
+
+jobs:
+  smoke:
+    name: Source preview smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout with runtime submodule
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run public preview smoke
+        run: ./scripts/validate_public_smoke.sh

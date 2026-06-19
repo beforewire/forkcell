@@ -6,7 +6,7 @@ ForkCell is a governed execution-cell layer for AI agents: it adds fast workspac
 
 > Checkpoint -> governed run -> receipt -> accept, restore, or fork.
 
-ForkCell is currently a `v0.1.0-preview` project. The public-preview branch is intentionally small: it contains the ForkCell control plane, a pinned governed-runtime submodule, a review patch artifact, and the minimum scripts/docs needed to understand and run the preview.
+ForkCell is currently the `v0.1.0-preview` source preview (`0.1.0a0` Python package version). The public-preview branch is intentionally small: it contains the ForkCell control plane, a pinned governed-runtime submodule, a review patch artifact, and the minimum scripts/docs needed to understand and run the preview.
 
 ## Why ForkCell Exists
 
@@ -57,7 +57,7 @@ ForkCell's preview runtime integration uses a pinned OpenShell fork:
 repo:    https://github.com/beforewire/openshell
 branch:  forkcell-workspace-substrate
 tag:     forkcell-runtime-v0.1.3-preview
-commit:  8717d17a1cff50204cdd139fa4bf1c262cbf5f85
+commit:  393c25a86d9128ff5e38ecf537809efe58470266
 ```
 
 The runtime fork carries a narrow workspace-substrate change:
@@ -196,4 +196,4 @@ ForkCell is part of BeforeWire's agent-trust infrastructure work: make agent exe
 
 ## Status
 
-`v0.1.0-preview` is experimental. The preview is intended to show the product boundary and the working checkpoint/restore/receipt path before the project is promoted to a broader public release.
+`v0.1.0-preview` / `0.1.0a0` is experimental. The preview is intended to show the product boundary and the working checkpoint/restore/receipt path before the project is promoted to a broader public release.

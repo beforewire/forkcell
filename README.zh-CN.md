@@ -6,7 +6,7 @@ ForkCell 是面向 AI Agent 的 governed execution cell 控制层：它把一次
 
 > checkpoint -> governed run -> receipt -> accept / restore / fork
 
-当前仓库是 `v0.1.0-preview`。这个 preview 分支刻意保持精简：只包含 ForkCell 控制面、固定版本的 governed-runtime submodule、runtime patch provenance，以及足够让用户理解和跑通的文档/脚本。
+当前仓库是 `v0.1.0-preview` source preview（Python package version 为 `0.1.0a0`）。这个 preview 分支刻意保持精简：只包含 ForkCell 控制面、固定版本的 governed-runtime submodule、runtime patch provenance，以及足够让用户理解和跑通的文档/脚本。
 
 ## 为什么需要 ForkCell
 
@@ -56,7 +56,7 @@ OpenShell patch 已经应用在固定版本的 `beforewire/openshell` submodule 
 repo:    https://github.com/beforewire/openshell
 branch:  forkcell-workspace-substrate
 tag:     forkcell-runtime-v0.1.3-preview
-commit:  8717d17a1cff50204cdd139fa4bf1c262cbf5f85
+commit:  393c25a86d9128ff5e38ecf537809efe58470266
 ```
 
 这个 runtime fork 的 patch 范围很窄：
@@ -193,4 +193,4 @@ ForkCell 是 BeforeWire agent-trust infrastructure 方向的一部分：让 agen
 
 ## 状态
 
-`v0.1.0-preview` 是实验性版本。这个 preview 用于展示产品边界，以及 checkpoint / restore / receipt 这条 working path。后续会继续补充更完整的运行时矩阵、验证门禁和示例场景。
+`v0.1.0-preview` / `0.1.0a0` 是实验性版本。这个 preview 用于展示产品边界，以及 checkpoint / restore / receipt 这条 working path。后续会继续补充更完整的运行时矩阵、验证门禁和示例场景。

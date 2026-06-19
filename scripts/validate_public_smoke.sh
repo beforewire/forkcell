@@ -12,6 +12,15 @@ test -f patches/openshell.lock
 test -f patches/openshell-workspace-substrate-2026-06-19.patch
 test -d upstream/openshell
 
+expected_runtime_commit=$(awk '/^[[:space:]]+commit:/ { print $2; exit }' patches/openshell.lock)
+actual_runtime_commit=$(git -C upstream/openshell rev-parse HEAD)
+if [ "$actual_runtime_commit" != "$expected_runtime_commit" ]; then
+  echo "OpenShell submodule commit mismatch: expected $expected_runtime_commit, got $actual_runtime_commit" >&2
+  exit 1
+fi
+
+git -C upstream/openshell apply --reverse --check ../../patches/openshell-workspace-substrate-2026-06-19.patch
+
 python3 -m py_compile forkcell/*.py
 bash -n scripts/*.sh
 python3 -m forkcell.cli --help >/dev/null
@@ -40,6 +49,7 @@ cat <<MSG
 ForkCell public preview smoke passed.
 - Python modules compile
 - Shell scripts parse
-- OpenShell submodule is present
+- OpenShell submodule is present and matches patches/openshell.lock
+- Runtime patch artifact reverse-applies cleanly
 - No raw docs/evidence or runtime state is tracked
 MSG

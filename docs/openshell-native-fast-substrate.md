@@ -41,6 +41,6 @@ ForkCell passes a driver config like:
 
 - Runtime source: `upstream/openshell` submodule.
 - Runtime fork: `https://github.com/beforewire/openshell`.
-- Runtime commit: `8717d17a1cff50204cdd139fa4bf1c262cbf5f85`.
+- Runtime commit: `393c25a86d9128ff5e38ecf537809efe58470266`.
 - Review patch: `patches/openshell-workspace-substrate-2026-06-19.patch`.
 - Patch sha256: `646ad71866eeaa36598d0f91cf7ec69ed708e370893c709474b74b77e3f2d42d`.
