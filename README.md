@@ -1,5 +1,7 @@
 # ForkCell
 
+[中文](README.zh-CN.md) | English
+
 ForkCell is a governed execution-cell layer for AI agents: it adds fast workspace rollback, policy-bound runs, and reviewable receipts to local agent execution.
 
 > Checkpoint -> governed run -> receipt -> accept, restore, or fork.

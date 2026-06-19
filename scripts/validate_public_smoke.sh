@@ -29,7 +29,7 @@ fi
 if command -v rg >/dev/null 2>&1; then
   private_home_pattern="/Users/[^[:space:]/]+"
   mac_temp_pattern="/var/folders/[[:alnum:]_/-]+"
-  if rg -n --glob '!scripts/validate_public_smoke.sh' "${private_home_pattern}|${mac_temp_pattern}" README.md docs forkcell scripts patches pyproject.toml .gitignore .gitmodules >/tmp/forkcell-public-smoke-secrets.txt 2>/dev/null; then
+  if rg -n --glob '!scripts/validate_public_smoke.sh' "${private_home_pattern}|${mac_temp_pattern}" README.md README.zh-CN.md docs forkcell scripts patches pyproject.toml .gitignore .gitmodules >/tmp/forkcell-public-smoke-secrets.txt 2>/dev/null; then
     echo "potential private path marker found:" >&2
     cat /tmp/forkcell-public-smoke-secrets.txt >&2
     exit 1
