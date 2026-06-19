@@ -1,0 +1,4 @@
+[submodule "upstream/openshell"]
+	path = upstream/openshell
+	url = https://github.com/beforewire/openshell.git
+	branch = forkcell-workspace-substrate

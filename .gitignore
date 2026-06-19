@@ -1,0 +1,17 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+.forkcell/
+.forkcell-build/
+artifacts/
+receipts/
+checkpoints/
+node_modules/
+__pycache__/
+*.pyc
+upstream/openshell/target/
+upstream/openshell/target-linux-docker/
+
+.venv/
+*.egg-info/

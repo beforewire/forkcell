@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "forkcell"
+version = "0.1.0a0"
+description = "Governed execution cells for AI agents, with rollback and receipts"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "BeforeWire" }]
+keywords = ["ai-agents", "sandbox", "checkpoint", "openshell", "policy", "receipts"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+]
+
+[project.scripts]
+forkcell = "forkcell.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["forkcell*"]

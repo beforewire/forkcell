@@ -1,0 +1,12 @@
+ForkCell
+Copyright 2026 BeforeWire.
+
+ForkCell is distributed under the Apache License, Version 2.0.
+
+ForkCell depends on OpenShell as its governed runtime. The preview branch pins a runtime fork at:
+
+  https://github.com/beforewire/openshell
+
+That runtime fork is derived from NVIDIA OpenShell and retains the upstream OpenShell copyright, license, and notices in the submodule repository.
+
+The OpenShell workspace-substrate patch used by ForkCell is applied in the pinned runtime fork. A patch artifact is retained under `patches/` for review and upstreaming provenance.

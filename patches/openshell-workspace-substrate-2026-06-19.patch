@@ -1,0 +1,1062 @@
+diff --git a/crates/openshell-core/src/sandbox_env.rs b/crates/openshell-core/src/sandbox_env.rs
+index b457a4a..2387ad8 100644
+--- a/crates/openshell-core/src/sandbox_env.rs
++++ b/crates/openshell-core/src/sandbox_env.rs
+@@ -26,6 +26,9 @@ pub const LOG_LEVEL: &str = "OPENSHELL_LOG_LEVEL";
+ /// Shell command to run inside the sandbox.
+ pub const SANDBOX_COMMAND: &str = "OPENSHELL_SANDBOX_COMMAND";
+ 
++/// JSON-serialized workspace substrate configuration for supervisor setup.
++pub const WORKSPACE_CONFIG: &str = "OPENSHELL_WORKSPACE_CONFIG";
++
+ /// Deployment-controlled telemetry toggle propagated to the sandbox supervisor.
+ pub const TELEMETRY_ENABLED: &str = "OPENSHELL_TELEMETRY_ENABLED";
+ 
+diff --git a/crates/openshell-driver-docker/src/lib.rs b/crates/openshell-driver-docker/src/lib.rs
+index 963e7a0..5c113cc 100644
+--- a/crates/openshell-driver-docker/src/lib.rs
++++ b/crates/openshell-driver-docker/src/lib.rs
+@@ -65,6 +65,7 @@ use url::Url;
+ const WATCH_BUFFER: usize = 128;
+ const WATCH_POLL_INTERVAL: Duration = Duration::from_secs(2);
+ const WATCH_POLL_MAX_BACKOFF: Duration = Duration::from_secs(30);
++const WORKSPACE_BACKING_MOUNT_PATH: &str = "/var/lib/openshell/workspace";
+ 
+ const SUPERVISOR_MOUNT_PATH: &str = openshell_core::driver_utils::SUPERVISOR_CONTAINER_BINARY;
+ const TLS_CA_MOUNT_PATH: &str = openshell_core::driver_utils::TLS_CA_MOUNT_PATH;
+@@ -284,6 +285,7 @@ struct DockerSandboxDriverConfig {
+     )]
+     cdi_devices: Option<Vec<String>>,
+     mounts: Vec<DockerDriverMountConfig>,
++    workspace: Option<DockerWorkspaceConfig>,
+ }
+ 
+ impl DockerSandboxDriverConfig {
+@@ -345,10 +347,30 @@ enum DockerDriverMountConfig {
+     },
+ }
+ 
++#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
++#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
++enum DockerWorkspaceConfig {
++    ForkcellOverlay {
++        volume: String,
++        target: String,
++        #[serde(default = "default_workspace_backing_path", skip_deserializing)]
++        backing_path: String,
++        lower_subpath: String,
++        upper_subpath: String,
++        work_subpath: String,
++        merged_subpath: String,
++        checkpoint_id: String,
++    },
++}
++
+ fn default_true() -> bool {
+     true
+ }
+ 
++fn default_workspace_backing_path() -> String {
++    WORKSPACE_BACKING_MOUNT_PATH.to_string()
++}
++
+ type WatchStream =
+     Pin<Box<dyn Stream<Item = Result<WatchSandboxesEvent, Status>> + Send + 'static>>;
+ 
+@@ -549,27 +571,32 @@ impl DockerComputeDriver {
+         let config = docker_driver_config(template, self.config.enable_bind_mounts)?;
+         for mount in config.mounts {
+             if let DockerDriverMountConfig::Volume { source, .. } = mount {
+-                match self.docker.inspect_volume(source.trim()).await {
+-                    Ok(volume) => {
+-                        if !self.config.enable_bind_mounts && docker_volume_is_bind_backed(&volume)
+-                        {
+-                            return Err(Status::failed_precondition(format!(
+-                                "docker volume '{}' is backed by a host bind mount and requires enable_bind_mounts = true in [openshell.drivers.docker]",
+-                                source.trim()
+-                            )));
+-                        }
+-                    }
+-                    Err(err) if is_not_found_error(&err) => {
+-                        return Err(Status::failed_precondition(format!(
+-                            "docker volume '{}' does not exist",
+-                            source.trim()
+-                        )));
+-                    }
+-                    Err(err) => {
+-                        return Err(internal_status("inspect docker volume", err));
+-                    }
++                self.validate_named_volume_available(source.trim()).await?;
++            }
++        }
++        if let Some(DockerWorkspaceConfig::ForkcellOverlay { volume, .. }) = config.workspace {
++            self.validate_named_volume_available(volume.trim()).await?;
++        }
++        Ok(())
++    }
++
++    async fn validate_named_volume_available(&self, source: &str) -> Result<(), Status> {
++        match self.docker.inspect_volume(source).await {
++            Ok(volume) => {
++                if !self.config.enable_bind_mounts && docker_volume_is_bind_backed(&volume) {
++                    return Err(Status::failed_precondition(format!(
++                        "docker volume '{source}' is backed by a host bind mount and requires enable_bind_mounts = true in [openshell.drivers.docker]"
++                    )));
+                 }
+             }
++            Err(err) if is_not_found_error(&err) => {
++                return Err(Status::failed_precondition(format!(
++                    "docker volume '{source}' does not exist"
++                )));
++            }
++            Err(err) => {
++                return Err(internal_status("inspect docker volume", err));
++            }
+         }
+         Ok(())
+     }
+@@ -1723,18 +1750,10 @@ fn docker_driver_config(
+ ) -> Result<DockerSandboxDriverConfig, Status> {
+     let config =
+         DockerSandboxDriverConfig::from_template(template).map_err(Status::invalid_argument)?;
+-    validate_docker_driver_mounts(&config.mounts, enable_bind_mounts)?;
++    validate_docker_driver_config(&config, enable_bind_mounts)?;
+     Ok(config)
+ }
+ 
+-fn docker_driver_mounts(
+-    template: &DriverSandboxTemplate,
+-    enable_bind_mounts: bool,
+-) -> Result<Vec<Mount>, Status> {
+-    let config = docker_driver_config(template, enable_bind_mounts)?;
+-    config.mounts.iter().map(docker_mount_from_config).collect()
+-}
+-
+ fn docker_mount_from_config(config: &DockerDriverMountConfig) -> Result<Mount, Status> {
+     match config {
+         DockerDriverMountConfig::Bind {
+@@ -1885,6 +1904,127 @@ fn validate_docker_driver_mounts(
+     Ok(())
+ }
+ 
++fn validate_docker_driver_config(
++    config: &DockerSandboxDriverConfig,
++    enable_bind_mounts: bool,
++) -> Result<(), Status> {
++    validate_docker_driver_mounts(&config.mounts, enable_bind_mounts)?;
++    if let Some(workspace) = &config.workspace {
++        validate_docker_workspace_config(workspace)?;
++        let workspace_target = docker_workspace_target(workspace)?;
++        let workspace_backing_target = docker_workspace_backing_target(workspace)?;
++        for mount in &config.mounts {
++            let mount_target =
++                driver_mounts::validate_container_mount_target(docker_driver_mount_target(mount))
++                    .map_err(Status::failed_precondition)?;
++            if mount_target == workspace_target {
++                return Err(Status::failed_precondition(format!(
++                    "docker driver_config workspace target '{workspace_target}' duplicates a mount target"
++                )));
++            }
++            if mount_target == workspace_backing_target {
++                return Err(Status::failed_precondition(format!(
++                    "docker driver_config workspace backing target '{workspace_backing_target}' duplicates a mount target"
++                )));
++            }
++        }
++    }
++    Ok(())
++}
++
++fn validate_docker_workspace_config(config: &DockerWorkspaceConfig) -> Result<(), Status> {
++    match config {
++        DockerWorkspaceConfig::ForkcellOverlay {
++            volume,
++            target,
++            backing_path,
++            lower_subpath,
++            upper_subpath,
++            work_subpath,
++            merged_subpath,
++            checkpoint_id,
++        } => {
++            driver_mounts::validate_mount_source(volume, "workspace volume")
++                .map_err(Status::failed_precondition)?;
++            let target = driver_mounts::validate_container_mount_target(target)
++                .map_err(Status::failed_precondition)?;
++            if target != "/sandbox/work" {
++                return Err(Status::failed_precondition(format!(
++                    "forkcell_overlay workspace target must be '/sandbox/work', got '{target}'"
++                )));
++            }
++            let backing_path = driver_mounts::validate_container_mount_target(backing_path)
++                .map_err(Status::failed_precondition)?;
++            if backing_path == target {
++                return Err(Status::failed_precondition(
++                    "forkcell_overlay workspace backing_path must differ from target",
++                ));
++            }
++            for (field, subpath) in [
++                ("workspace lower_subpath", lower_subpath),
++                ("workspace upper_subpath", upper_subpath),
++                ("workspace work_subpath", work_subpath),
++                ("workspace merged_subpath", merged_subpath),
++            ] {
++                driver_mounts::validate_mount_subpath(subpath)
++                    .map_err(|err| Status::failed_precondition(format!("{field}: {err}")))?;
++            }
++            driver_mounts::validate_mount_source(checkpoint_id, "workspace checkpoint_id")
++                .map_err(Status::failed_precondition)?;
++        }
++    }
++    Ok(())
++}
++
++fn docker_workspace_target(config: &DockerWorkspaceConfig) -> Result<String, Status> {
++    match config {
++        DockerWorkspaceConfig::ForkcellOverlay { target, .. } => {
++            driver_mounts::validate_container_mount_target(target)
++                .map_err(Status::failed_precondition)
++        }
++    }
++}
++
++fn docker_workspace_backing_target(config: &DockerWorkspaceConfig) -> Result<String, Status> {
++    match config {
++        DockerWorkspaceConfig::ForkcellOverlay { backing_path, .. } => {
++            driver_mounts::validate_container_mount_target(backing_path)
++                .map_err(Status::failed_precondition)
++        }
++    }
++}
++
++fn docker_workspace_mount_from_config(config: &DockerWorkspaceConfig) -> Result<Mount, Status> {
++    match config {
++        DockerWorkspaceConfig::ForkcellOverlay {
++            volume,
++            backing_path,
++            ..
++        } => Ok(Mount {
++            typ: Some(MountTypeEnum::VOLUME),
++            source: Some(
++                driver_mounts::validate_mount_source(volume, "workspace volume")
++                    .map_err(Status::failed_precondition)?,
++            ),
++            target: Some(
++                driver_mounts::validate_container_mount_target(backing_path)
++                    .map_err(Status::failed_precondition)?,
++            ),
++            read_only: Some(false),
++            ..Default::default()
++        }),
++    }
++}
++
++fn docker_driver_mount_target(config: &DockerDriverMountConfig) -> &str {
++    match config {
++        DockerDriverMountConfig::Bind { target, .. }
++        | DockerDriverMountConfig::Volume { target, .. }
++        | DockerDriverMountConfig::Tmpfs { target, .. }
++        | DockerDriverMountConfig::Image { target, .. } => target,
++    }
++}
++
+ fn validate_optional_positive_integral_i64(
+     value: Option<f64>,
+     field: &str,
+@@ -2087,6 +2227,14 @@ fn cleanup_sandbox_token_file_by_id(sandbox_id: &str, config: &DockerDriverRunti
+ }
+ 
+ fn build_environment(sandbox: &DriverSandbox, config: &DockerDriverRuntimeConfig) -> Vec<String> {
++    build_environment_with_driver_config(sandbox, config, None)
++}
++
++fn build_environment_with_driver_config(
++    sandbox: &DriverSandbox,
++    config: &DockerDriverRuntimeConfig,
++    driver_config: Option<&DockerSandboxDriverConfig>,
++) -> Vec<String> {
+     let mut environment = HashMap::from([
+         ("HOME".to_string(), "/root".to_string()),
+         ("PATH".to_string(), SUPERVISOR_PATH.to_string()),
+@@ -2134,6 +2282,14 @@ fn build_environment(sandbox: &DriverSandbox, config: &DockerDriverRuntimeConfig
+         openshell_core::sandbox_env::SANDBOX_COMMAND.to_string(),
+         SANDBOX_COMMAND.to_string(),
+     );
++    if let Some(workspace) = driver_config.and_then(|config| config.workspace.as_ref())
++        && let Ok(json) = serde_json::to_string(workspace)
++    {
++        environment.insert(
++            openshell_core::sandbox_env::WORKSPACE_CONFIG.to_string(),
++            json,
++        );
++    }
+     environment.insert(
+         openshell_core::sandbox_env::TELEMETRY_ENABLED.to_string(),
+         openshell_core::telemetry::enabled_env_value().to_string(),
+@@ -2260,7 +2416,15 @@ fn build_container_create_body_with_default(
+         .as_ref()
+         .ok_or_else(|| Status::invalid_argument("sandbox.spec.template is required"))?;
+     let resource_limits = docker_resource_limits(template)?;
+-    let user_mounts = docker_driver_mounts(template, config.enable_bind_mounts)?;
++    let driver_config = docker_driver_config(template, config.enable_bind_mounts)?;
++    let mut user_mounts = driver_config
++        .mounts
++        .iter()
++        .map(docker_mount_from_config)
++        .collect::<Result<Vec<_>, _>>()?;
++    if let Some(workspace) = &driver_config.workspace {
++        user_mounts.push(docker_workspace_mount_from_config(workspace)?);
++    }
+     let device_requests = build_device_requests(sandbox, selected_default_device)?;
+     let mut labels = template.labels.clone();
+     labels.insert(
+@@ -2281,7 +2445,11 @@ fn build_container_create_body_with_default(
+     Ok(ContainerCreateBody {
+         image: Some(template.image.clone()),
+         user: Some("0".to_string()),
+-        env: Some(build_environment(sandbox, config)),
++        env: Some(build_environment_with_driver_config(
++            sandbox,
++            config,
++            Some(&driver_config),
++        )),
+         entrypoint: Some(vec![SUPERVISOR_MOUNT_PATH.to_string()]),
+         // Clear the image CMD so Docker does not append inherited args to the
+         // supervisor entrypoint.
+diff --git a/crates/openshell-driver-docker/src/tests.rs b/crates/openshell-driver-docker/src/tests.rs
+index d5132fe..f2cb63d 100644
+--- a/crates/openshell-driver-docker/src/tests.rs
++++ b/crates/openshell-driver-docker/src/tests.rs
+@@ -745,6 +745,254 @@ fn driver_config_allows_explicit_writable_volume_mounts() {
+     assert_eq!(mounts[0].read_only, Some(false));
+ }
+ 
++#[test]
++fn driver_config_accepts_forkcell_workspace_contract() {
++    let mut sandbox = test_sandbox();
++    let template = sandbox.spec.as_mut().unwrap().template.as_mut().unwrap();
++    template.driver_config = Some(json_struct(serde_json::json!({
++        "workspace": {
++            "type": "forkcell_overlay",
++            "volume": "forkcell-work-cellid",
++            "target": "/sandbox/work/",
++            "lower_subpath": "layers/base",
++            "upper_subpath": "layers/run-upper",
++            "work_subpath": "layers/run-work",
++            "merged_subpath": "layers/merged",
++            "checkpoint_id": "chk_123"
++        }
++    })));
++
++    let cfg = docker_driver_config(template, false).unwrap();
++
++    assert!(matches!(
++        cfg.workspace,
++        Some(DockerWorkspaceConfig::ForkcellOverlay { .. })
++    ));
++}
++
++#[test]
++fn driver_config_passes_workspace_config_to_supervisor() {
++    let mut sandbox = test_sandbox();
++    let template = sandbox.spec.as_mut().unwrap().template.as_mut().unwrap();
++    template.driver_config = Some(json_struct(serde_json::json!({
++        "workspace": {
++            "type": "forkcell_overlay",
++            "volume": "forkcell-work-cellid",
++            "target": "/sandbox/work",
++            "lower_subpath": "layers/base",
++            "upper_subpath": "layers/run-upper",
++            "work_subpath": "layers/run-work",
++            "merged_subpath": "layers/merged",
++            "checkpoint_id": "chk_123"
++        }
++    })));
++
++    let body = build_container_create_body(&sandbox, &runtime_config()).unwrap();
++    let env = body.env.expect("container env should be set");
++    let workspace = env
++        .iter()
++        .find_map(|pair| {
++            pair.strip_prefix(&format!(
++                "{}=",
++                openshell_core::sandbox_env::WORKSPACE_CONFIG
++            ))
++        })
++        .expect("workspace config env should be set");
++    let workspace: serde_json::Value = serde_json::from_str(workspace).unwrap();
++
++    assert_eq!(workspace["type"], "forkcell_overlay");
++    assert_eq!(workspace["volume"], "forkcell-work-cellid");
++    assert_eq!(workspace["target"], "/sandbox/work");
++    assert_eq!(workspace["backing_path"], WORKSPACE_BACKING_MOUNT_PATH);
++    assert_eq!(workspace["checkpoint_id"], "chk_123");
++}
++
++#[test]
++fn driver_config_mounts_workspace_backing_volume() {
++    let mut sandbox = test_sandbox();
++    let template = sandbox.spec.as_mut().unwrap().template.as_mut().unwrap();
++    template.driver_config = Some(json_struct(serde_json::json!({
++        "workspace": {
++            "type": "forkcell_overlay",
++            "volume": "forkcell-work-cellid",
++            "target": "/sandbox/work",
++            "lower_subpath": "layers/base",
++            "upper_subpath": "layers/run-upper",
++            "work_subpath": "layers/run-work",
++            "merged_subpath": "layers/merged",
++            "checkpoint_id": "chk_123"
++        }
++    })));
++
++    let body = build_container_create_body(&sandbox, &runtime_config()).unwrap();
++    let mounts = body
++        .host_config
++        .unwrap()
++        .mounts
++        .expect("workspace backing volume mount should be set");
++
++    assert_eq!(mounts.len(), 1);
++    assert_eq!(mounts[0].typ, Some(MountTypeEnum::VOLUME));
++    assert_eq!(mounts[0].source.as_deref(), Some("forkcell-work-cellid"));
++    assert_eq!(
++        mounts[0].target.as_deref(),
++        Some(WORKSPACE_BACKING_MOUNT_PATH)
++    );
++    assert_eq!(mounts[0].read_only, Some(false));
++}
++
++#[test]
++fn driver_config_rejects_workspace_target_outside_workdir() {
++    let mut sandbox = test_sandbox();
++    let template = sandbox.spec.as_mut().unwrap().template.as_mut().unwrap();
++    template.driver_config = Some(json_struct(serde_json::json!({
++        "workspace": {
++            "type": "forkcell_overlay",
++            "volume": "forkcell-work-cellid",
++            "target": "/sandbox/cache",
++            "lower_subpath": "layers/base",
++            "upper_subpath": "layers/run-upper",
++            "work_subpath": "layers/run-work",
++            "merged_subpath": "layers/merged",
++            "checkpoint_id": "chk_123"
++        }
++    })));
++
++    let err = docker_driver_config(template, false).unwrap_err();
++
++    assert_eq!(err.code(), tonic::Code::FailedPrecondition);
++    assert!(err.message().contains("must be '/sandbox/work'"));
++}
++
++#[test]
++fn driver_config_rejects_workspace_root_target() {
++    let mut sandbox = test_sandbox();
++    let template = sandbox.spec.as_mut().unwrap().template.as_mut().unwrap();
++    template.driver_config = Some(json_struct(serde_json::json!({
++        "workspace": {
++            "type": "forkcell_overlay",
++            "volume": "forkcell-work-cellid",
++            "target": "/sandbox",
++            "lower_subpath": "layers/base",
++            "upper_subpath": "layers/run-upper",
++            "work_subpath": "layers/run-work",
++            "merged_subpath": "layers/merged",
++            "checkpoint_id": "chk_123"
++        }
++    })));
++
++    let err = docker_driver_config(template, false).unwrap_err();
++
++    assert_eq!(err.code(), tonic::Code::FailedPrecondition);
++    assert!(
++        err.message()
++            .contains("reserved for the OpenShell workspace")
++    );
++}
++
++#[test]
++fn driver_config_rejects_workspace_parent_subpath() {
++    let mut sandbox = test_sandbox();
++    let template = sandbox.spec.as_mut().unwrap().template.as_mut().unwrap();
++    template.driver_config = Some(json_struct(serde_json::json!({
++        "workspace": {
++            "type": "forkcell_overlay",
++            "volume": "forkcell-work-cellid",
++            "target": "/sandbox/work",
++            "lower_subpath": "../base",
++            "upper_subpath": "layers/run-upper",
++            "work_subpath": "layers/run-work",
++            "merged_subpath": "layers/merged",
++            "checkpoint_id": "chk_123"
++        }
++    })));
++
++    let err = docker_driver_config(template, false).unwrap_err();
++
++    assert_eq!(err.code(), tonic::Code::FailedPrecondition);
++    assert!(err.message().contains("workspace lower_subpath"));
++}
++
++#[test]
++fn driver_config_rejects_workspace_duplicate_mount_target() {
++    let mut sandbox = test_sandbox();
++    let template = sandbox.spec.as_mut().unwrap().template.as_mut().unwrap();
++    template.driver_config = Some(json_struct(serde_json::json!({
++        "workspace": {
++            "type": "forkcell_overlay",
++            "volume": "forkcell-work-cellid",
++            "target": "/sandbox/work",
++            "lower_subpath": "layers/base",
++            "upper_subpath": "layers/run-upper",
++            "work_subpath": "layers/run-work",
++            "merged_subpath": "layers/merged",
++            "checkpoint_id": "chk_123"
++        },
++        "mounts": [{
++            "type": "volume",
++            "source": "work-nfs",
++            "target": "/sandbox/work"
++        }]
++    })));
++
++    let err = docker_driver_config(template, false).unwrap_err();
++
++    assert_eq!(err.code(), tonic::Code::FailedPrecondition);
++    assert!(err.message().contains("duplicates a mount target"));
++}
++
++#[test]
++fn driver_config_rejects_workspace_duplicate_backing_mount_target() {
++    let mut sandbox = test_sandbox();
++    let template = sandbox.spec.as_mut().unwrap().template.as_mut().unwrap();
++    template.driver_config = Some(json_struct(serde_json::json!({
++        "workspace": {
++            "type": "forkcell_overlay",
++            "volume": "forkcell-work-cellid",
++            "target": "/sandbox/work",
++            "lower_subpath": "layers/base",
++            "upper_subpath": "layers/run-upper",
++            "work_subpath": "layers/run-work",
++            "merged_subpath": "layers/merged",
++            "checkpoint_id": "chk_123"
++        },
++        "mounts": [{
++            "type": "volume",
++            "source": "work-nfs",
++            "target": "/var/lib/openshell/workspace"
++        }]
++    })));
++
++    let err = docker_driver_config(template, false).unwrap_err();
++
++    assert_eq!(err.code(), tonic::Code::FailedPrecondition);
++    assert!(err.message().contains("backing target"));
++}
++
++#[test]
++fn driver_config_rejects_unknown_workspace_fields() {
++    let mut sandbox = test_sandbox();
++    let template = sandbox.spec.as_mut().unwrap().template.as_mut().unwrap();
++    template.driver_config = Some(json_struct(serde_json::json!({
++        "workspace": {
++            "type": "forkcell_overlay",
++            "volume": "forkcell-work-cellid",
++            "target": "/sandbox/work",
++            "lower_subpath": "layers/base",
++            "upper_subpath": "layers/run-upper",
++            "work_subpath": "layers/run-work",
++            "merged_subpath": "layers/merged",
++            "checkpoint_id": "chk_123",
++            "bind": "/tmp/unsafe"
++        }
++    })));
++
++    let err = docker_driver_config(template, false).unwrap_err();
++
++    assert_eq!(err.code(), tonic::Code::InvalidArgument);
++    assert!(err.message().contains("unknown field"));
++}
++
+ #[test]
+ fn driver_config_rejects_bind_mounts_unless_enabled() {
+     let mut sandbox = test_sandbox();
+diff --git a/crates/openshell-supervisor-process/src/process.rs b/crates/openshell-supervisor-process/src/process.rs
+index 9f9fe18..1e91125 100644
+--- a/crates/openshell-supervisor-process/src/process.rs
++++ b/crates/openshell-supervisor-process/src/process.rs
+@@ -33,6 +33,7 @@ const SUPERVISOR_ONLY_ENV_VARS: &[&str] = &[
+     openshell_core::sandbox_env::SANDBOX_TOKEN_FILE,
+     openshell_core::sandbox_env::K8S_SA_TOKEN_FILE,
+     openshell_core::sandbox_env::PROVIDER_SPIFFE_WORKLOAD_API_SOCKET,
++    openshell_core::sandbox_env::WORKSPACE_CONFIG,
+ ];
+ 
+ pub fn is_supervisor_only_env_var(key: &str) -> bool {
+@@ -54,6 +55,289 @@ fn inject_provider_env(cmd: &mut Command, provider_env: &HashMap<String, String>
+     }
+ }
+ 
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub enum WorkspaceSubstrateConfig {
++    ForkcellOverlay {
++        volume: String,
++        target: String,
++        backing_path: String,
++        lower_subpath: String,
++        upper_subpath: String,
++        work_subpath: String,
++        merged_subpath: String,
++        checkpoint_id: String,
++    },
++}
++
++pub fn parse_workspace_substrate_config(raw: &str) -> Result<WorkspaceSubstrateConfig> {
++    let value: serde_json::Value = serde_json::from_str(raw).into_diagnostic()?;
++    let obj = value
++        .as_object()
++        .ok_or_else(|| miette::miette!("workspace config must be a JSON object"))?;
++    let workspace_type = workspace_string_field(obj, "type")?;
++    match workspace_type {
++        "forkcell_overlay" => {
++            reject_unknown_workspace_fields(
++                obj,
++                &[
++                    "type",
++                    "volume",
++                    "target",
++                    "backing_path",
++                    "lower_subpath",
++                    "upper_subpath",
++                    "work_subpath",
++                    "merged_subpath",
++                    "checkpoint_id",
++                ],
++            )?;
++            let volume = validate_workspace_source(workspace_string_field(obj, "volume")?)?;
++            let target = openshell_core::driver_mounts::validate_container_mount_target(
++                workspace_string_field(obj, "target")?,
++            )
++            .map_err(|err| miette::miette!("{err}"))?;
++            if target != "/sandbox/work" {
++                return Err(miette::miette!(
++                    "forkcell_overlay workspace target must be '/sandbox/work', got '{target}'"
++                ));
++            }
++            let backing_path = openshell_core::driver_mounts::validate_container_mount_target(
++                workspace_string_field(obj, "backing_path")?,
++            )
++            .map_err(|err| miette::miette!("{err}"))?;
++            if backing_path == target {
++                return Err(miette::miette!(
++                    "forkcell_overlay workspace backing_path must differ from target"
++                ));
++            }
++            let lower_subpath = validate_workspace_subpath(
++                "lower_subpath",
++                workspace_string_field(obj, "lower_subpath")?,
++            )?;
++            let upper_subpath = validate_workspace_subpath(
++                "upper_subpath",
++                workspace_string_field(obj, "upper_subpath")?,
++            )?;
++            let work_subpath = validate_workspace_subpath(
++                "work_subpath",
++                workspace_string_field(obj, "work_subpath")?,
++            )?;
++            let merged_subpath = validate_workspace_subpath(
++                "merged_subpath",
++                workspace_string_field(obj, "merged_subpath")?,
++            )?;
++            let checkpoint_id =
++                validate_workspace_source(workspace_string_field(obj, "checkpoint_id")?)?;
++            Ok(WorkspaceSubstrateConfig::ForkcellOverlay {
++                volume,
++                target,
++                backing_path,
++                lower_subpath,
++                upper_subpath,
++                work_subpath,
++                merged_subpath,
++                checkpoint_id,
++            })
++        }
++        other => Err(miette::miette!(
++            "unsupported workspace substrate type '{other}'"
++        )),
++    }
++}
++
++fn workspace_string_field<'a>(
++    obj: &'a serde_json::Map<String, serde_json::Value>,
++    field: &str,
++) -> Result<&'a str> {
++    obj.get(field)
++        .and_then(serde_json::Value::as_str)
++        .ok_or_else(|| miette::miette!("workspace config field '{field}' must be a string"))
++}
++
++fn reject_unknown_workspace_fields(
++    obj: &serde_json::Map<String, serde_json::Value>,
++    allowed: &[&str],
++) -> Result<()> {
++    for field in obj.keys() {
++        if !allowed.contains(&field.as_str()) {
++            return Err(miette::miette!("unknown workspace config field '{field}'"));
++        }
++    }
++    Ok(())
++}
++
++fn validate_workspace_source(value: &str) -> Result<String> {
++    openshell_core::driver_mounts::validate_mount_source(value, "workspace source")
++        .map_err(|err| miette::miette!("{err}"))
++}
++
++fn validate_workspace_subpath(field: &str, value: &str) -> Result<String> {
++    openshell_core::driver_mounts::validate_mount_subpath(value)
++        .map_err(|err| miette::miette!("workspace {field}: {err}"))
++}
++
++pub fn workspace_substrate_config_from_env() -> Result<Option<WorkspaceSubstrateConfig>> {
++    match std::env::var(openshell_core::sandbox_env::WORKSPACE_CONFIG) {
++        Ok(raw) => parse_workspace_substrate_config(&raw).map(Some),
++        Err(std::env::VarError::NotPresent) => Ok(None),
++        Err(err) => Err(miette::miette!(
++            "{} is not valid UTF-8: {err}",
++            openshell_core::sandbox_env::WORKSPACE_CONFIG
++        )),
++    }
++}
++
++pub fn prepare_workspace_substrate_from_env() -> Result<Option<WorkspaceSubstrateConfig>> {
++    let Some(config) = workspace_substrate_config_from_env()? else {
++        return Ok(None);
++    };
++    match &config {
++        WorkspaceSubstrateConfig::ForkcellOverlay {
++            volume,
++            target,
++            backing_path,
++            checkpoint_id,
++            ..
++        } => {
++            let plan = plan_workspace_overlay(&config)?;
++            tracing::info!(
++                substrate = "forkcell_overlay",
++                volume = %volume,
++                target = %target,
++                backing_path = %backing_path,
++                lowerdir = %plan.lowerdir.display(),
++                upperdir = %plan.upperdir.display(),
++                workdir = %plan.workdir.display(),
++                mergeddir = %plan.mergeddir.display(),
++                checkpoint_id = %checkpoint_id,
++                metadata_only_restore = true,
++                "Workspace substrate config accepted"
++            );
++            #[cfg(target_os = "linux")]
++            prepare_workspace_overlay_mount(&plan)?;
++        }
++    }
++    Ok(Some(config))
++}
++
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub struct WorkspaceOverlayPlan {
++    pub target: PathBuf,
++    pub backing_path: PathBuf,
++    pub lowerdir: PathBuf,
++    pub upperdir: PathBuf,
++    pub workdir: PathBuf,
++    pub mergeddir: PathBuf,
++}
++
++pub fn plan_workspace_overlay(config: &WorkspaceSubstrateConfig) -> Result<WorkspaceOverlayPlan> {
++    match config {
++        WorkspaceSubstrateConfig::ForkcellOverlay {
++            target,
++            backing_path,
++            lower_subpath,
++            upper_subpath,
++            work_subpath,
++            merged_subpath,
++            ..
++        } => {
++            let backing_path = PathBuf::from(backing_path);
++            Ok(WorkspaceOverlayPlan {
++                target: PathBuf::from(target),
++                lowerdir: backing_path.join(lower_subpath),
++                upperdir: backing_path.join(upper_subpath),
++                workdir: backing_path.join(work_subpath),
++                mergeddir: backing_path.join(merged_subpath),
++                backing_path,
++            })
++        }
++    }
++}
++
++#[cfg(target_os = "linux")]
++fn prepare_workspace_overlay_mount(plan: &WorkspaceOverlayPlan) -> Result<()> {
++    std::fs::create_dir_all(&plan.lowerdir).into_diagnostic()?;
++    std::fs::create_dir_all(&plan.upperdir).into_diagnostic()?;
++    std::fs::create_dir_all(&plan.workdir).into_diagnostic()?;
++    std::fs::create_dir_all(&plan.mergeddir).into_diagnostic()?;
++    std::fs::create_dir_all(&plan.target).into_diagnostic()?;
++    chown_workspace_overlay_runtime_dirs(plan)?;
++
++    if is_mountpoint(&plan.target)? {
++        return Ok(());
++    }
++
++    let source = CString::new("overlay").expect("static overlay source has no NUL");
++    let fstype = CString::new("overlay").expect("static overlay fstype has no NUL");
++    let target = path_to_cstring(&plan.target)?;
++    let options = CString::new(format!(
++        "lowerdir={},upperdir={},workdir={}",
++        plan.lowerdir.display(),
++        plan.upperdir.display(),
++        plan.workdir.display()
++    ))
++    .map_err(|err| miette::miette!("workspace overlay mount options contain NUL: {err}"))?;
++
++    let rc = unsafe {
++        libc::mount(
++            source.as_ptr(),
++            target.as_ptr(),
++            fstype.as_ptr(),
++            0,
++            options.as_ptr().cast(),
++        )
++    };
++    if rc != 0 {
++        return Err(miette::miette!(
++            "failed to mount workspace overlay at {}: {}",
++            plan.target.display(),
++            std::io::Error::last_os_error()
++        ));
++    }
++    Ok(())
++}
++
++#[cfg(target_os = "linux")]
++fn chown_workspace_overlay_runtime_dirs(plan: &WorkspaceOverlayPlan) -> Result<()> {
++    use nix::unistd::chown;
++
++    let user = User::from_name("sandbox")
++        .into_diagnostic()?
++        .ok_or_else(|| miette::miette!("Sandbox user not found: sandbox"))?;
++    let group = Group::from_name("sandbox")
++        .into_diagnostic()?
++        .ok_or_else(|| miette::miette!("Sandbox group not found: sandbox"))?;
++    for path in [&plan.upperdir, &plan.workdir, &plan.mergeddir] {
++        chown(path, Some(user.uid), Some(group.gid)).into_diagnostic()?;
++    }
++    Ok(())
++}
++
++#[cfg(target_os = "linux")]
++fn is_mountpoint(path: &Path) -> Result<bool> {
++    let canonical = path.canonicalize().map_err(|err| {
++        miette::miette!("failed to resolve mount target {}: {err}", path.display())
++    })?;
++    let mountinfo = std::fs::read_to_string("/proc/self/mountinfo")
++        .into_diagnostic()
++        .map_err(|err| miette::miette!("failed to read /proc/self/mountinfo: {err}"))?;
++    Ok(mountinfo.lines().any(|line| {
++        let Some(fields) = line.split(" - ").next() else {
++            return false;
++        };
++        let Some(target) = fields.split_whitespace().nth(4) else {
++            return false;
++        };
++        Path::new(target) == canonical
++    }))
++}
++
++#[cfg(target_os = "linux")]
++fn path_to_cstring(path: &Path) -> Result<CString> {
++    CString::new(path.as_os_str().as_bytes())
++        .map_err(|err| miette::miette!("path contains NUL byte: {err}"))
++}
++
+ #[cfg(unix)]
+ pub fn harden_child_process() -> Result<()> {
+     use rustix::process::{Resource, Rlimit, setrlimit};
+@@ -524,6 +808,10 @@ impl ProcessHandle {
+         let supervisor_identity_mount = supervisor_identity_mount_from_env().map_err(|err| {
+             miette::miette!("Failed to prepare supervisor identity isolation: {err}")
+         })?;
++        #[cfg(target_os = "linux")]
++        let _workspace_substrate = prepare_workspace_substrate_from_env().map_err(|err| {
++            miette::miette!("Failed to prepare workspace substrate config: {err}")
++        })?;
+ 
+         // Set up process group for signal handling (non-interactive mode only).
+         // In interactive mode, we inherit the parent's process group to maintain
+@@ -1308,6 +1596,147 @@ mod tests {
+         }
+     }
+ 
++    #[test]
++    fn parse_workspace_substrate_accepts_forkcell_overlay() {
++        let config = parse_workspace_substrate_config(
++            r#"{
++                "type": "forkcell_overlay",
++                "volume": "forkcell-work-cellid",
++                "target": "/sandbox/work/",
++                "backing_path": "/var/lib/openshell/workspace",
++                "lower_subpath": "layers/base",
++                "upper_subpath": "layers/run-upper",
++                "work_subpath": "layers/run-work",
++                "merged_subpath": "layers/merged",
++                "checkpoint_id": "chk_123"
++            }"#,
++        )
++        .unwrap();
++
++        assert_eq!(
++            config,
++            WorkspaceSubstrateConfig::ForkcellOverlay {
++                volume: "forkcell-work-cellid".to_string(),
++                target: "/sandbox/work".to_string(),
++                backing_path: "/var/lib/openshell/workspace".to_string(),
++                lower_subpath: "layers/base".to_string(),
++                upper_subpath: "layers/run-upper".to_string(),
++                work_subpath: "layers/run-work".to_string(),
++                merged_subpath: "layers/merged".to_string(),
++                checkpoint_id: "chk_123".to_string(),
++            }
++        );
++    }
++
++    #[test]
++    fn plan_workspace_overlay_resolves_backing_subpaths() {
++        let config = parse_workspace_substrate_config(
++            r#"{
++                "type": "forkcell_overlay",
++                "volume": "forkcell-work-cellid",
++                "target": "/sandbox/work",
++                "backing_path": "/var/lib/openshell/workspace",
++                "lower_subpath": "layers/base",
++                "upper_subpath": "layers/run-upper",
++                "work_subpath": "layers/run-work",
++                "merged_subpath": "layers/merged",
++                "checkpoint_id": "chk_123"
++            }"#,
++        )
++        .unwrap();
++
++        let plan = plan_workspace_overlay(&config).unwrap();
++
++        assert_eq!(plan.target, PathBuf::from("/sandbox/work"));
++        assert_eq!(
++            plan.lowerdir,
++            PathBuf::from("/var/lib/openshell/workspace/layers/base")
++        );
++        assert_eq!(
++            plan.upperdir,
++            PathBuf::from("/var/lib/openshell/workspace/layers/run-upper")
++        );
++        assert_eq!(
++            plan.workdir,
++            PathBuf::from("/var/lib/openshell/workspace/layers/run-work")
++        );
++        assert_eq!(
++            plan.mergeddir,
++            PathBuf::from("/var/lib/openshell/workspace/layers/merged")
++        );
++    }
++
++    #[test]
++    fn parse_workspace_substrate_rejects_workspace_root() {
++        let err = parse_workspace_substrate_config(
++            r#"{
++                "type": "forkcell_overlay",
++                "volume": "forkcell-work-cellid",
++                "target": "/sandbox",
++                "backing_path": "/var/lib/openshell/workspace",
++                "lower_subpath": "layers/base",
++                "upper_subpath": "layers/run-upper",
++                "work_subpath": "layers/run-work",
++                "merged_subpath": "layers/merged",
++                "checkpoint_id": "chk_123"
++            }"#,
++        )
++        .unwrap_err();
++
++        assert!(
++            err.to_string()
++                .contains("reserved for the OpenShell workspace")
++        );
++    }
++
++    #[test]
++    fn parse_workspace_substrate_rejects_parent_subpath() {
++        let err = parse_workspace_substrate_config(
++            r#"{
++                "type": "forkcell_overlay",
++                "volume": "forkcell-work-cellid",
++                "target": "/sandbox/work",
++                "backing_path": "/var/lib/openshell/workspace",
++                "lower_subpath": "../base",
++                "upper_subpath": "layers/run-upper",
++                "work_subpath": "layers/run-work",
++                "merged_subpath": "layers/merged",
++                "checkpoint_id": "chk_123"
++            }"#,
++        )
++        .unwrap_err();
++
++        assert!(err.to_string().contains("workspace lower_subpath"));
++    }
++
++    #[test]
++    fn parse_workspace_substrate_rejects_unknown_fields() {
++        let err = parse_workspace_substrate_config(
++            r#"{
++                "type": "forkcell_overlay",
++                "volume": "forkcell-work-cellid",
++                "target": "/sandbox/work",
++                "backing_path": "/var/lib/openshell/workspace",
++                "lower_subpath": "layers/base",
++                "upper_subpath": "layers/run-upper",
++                "work_subpath": "layers/run-work",
++                "merged_subpath": "layers/merged",
++                "checkpoint_id": "chk_123",
++                "bind": "/tmp/unsafe"
++            }"#,
++        )
++        .unwrap_err();
++
++        assert!(err.to_string().contains("unknown workspace config field"));
++    }
++
++    #[test]
++    fn workspace_config_is_supervisor_only() {
++        assert!(is_supervisor_only_env_var(
++            openshell_core::sandbox_env::WORKSPACE_CONFIG
++        ));
++    }
++
+     #[tokio::test]
+     async fn inject_provider_env_sets_placeholder_values() {
+         let mut cmd = Command::new("/usr/bin/env");
+diff --git a/crates/openshell-supervisor-process/src/run.rs b/crates/openshell-supervisor-process/src/run.rs
+index 5a5c203..2dc4c45 100644
+--- a/crates/openshell-supervisor-process/src/run.rs
++++ b/crates/openshell-supervisor-process/src/run.rs
+@@ -79,6 +79,12 @@ pub async fn run_process(
+     #[cfg(unix)]
+     crate::process::prepare_filesystem(policy)?;
+ 
++    // Native workspace substrates may need privileged mount setup. Do this
++    // before the supervisor seccomp prelude blocks mount syscalls.
++    #[cfg(target_os = "linux")]
++    let _workspace_substrate = crate::process::prepare_workspace_substrate_from_env()
++        .map_err(|err| miette::miette!("Failed to prepare workspace substrate config: {err}"))?;
++
+     // Eagerly fetch initial settings and install the agent skill if the
+     // proposals flag is on at startup, rather than waiting for the policy
+     // poll loop's first tick. In offline/file-mode there is no gateway, so
