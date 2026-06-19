@@ -158,7 +158,7 @@ README 路径下的 tiny workspace demo 曾产生：
 - checkpoint duration: `0ms`；
 - restore duration: `0ms`；
 - `restore_sync_ms`: `0ms`；
-- `total_restore_path_ms`: `783ms`，包含 runtime sandbox delete/lifecycle 和 log collection。
+- `total_restore_path_ms`: `726ms`，包含 runtime sandbox delete/lifecycle 和 log collection。
 
 更多见 `docs/evidence-summary.md`。
 

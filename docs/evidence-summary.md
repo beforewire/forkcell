@@ -32,11 +32,11 @@ A fresh clone of the public-preview branch was validated through the README path
 
 The tiny README demo produced:
 
-- base import: `323ms`;
+- base import: `288ms`;
 - checkpoint mark: `0ms`;
 - restore duration: `0ms`;
 - `restore_sync_ms`: `0ms`;
-- `total_restore_path_ms`: `783ms`, including runtime sandbox delete/lifecycle and log collection.
+- `total_restore_path_ms`: `726ms`, including runtime sandbox delete/lifecycle and log collection.
 
 ## Boundary Note
 

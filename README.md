@@ -161,7 +161,7 @@ Latest validation for this preview line:
 - runtime packaging and CI-style gate passed;
 - runtime sandbox lifecycle is still roughly hundreds of milliseconds, so only the synchronous restore substrate should be described as sub-ms/`0ms`.
 
-Fresh README-path validation on macOS + Docker also produced a tiny-workspace receipt with `checkpoint duration: 0ms`, `restore duration: 0ms`, `restore_sync_ms: 0ms`, and `total_restore_path_ms: 783ms`. The latter includes runtime sandbox delete/lifecycle and log collection, not just ForkCell's restore substrate.
+Fresh README-path validation on macOS + Docker also produced a tiny-workspace receipt with `checkpoint duration: 0ms`, `restore duration: 0ms`, `restore_sync_ms: 0ms`, and `total_restore_path_ms: 726ms`. The latter includes runtime sandbox delete/lifecycle and log collection, not just ForkCell's restore substrate.
 
 A sanitized evidence summary is in `docs/evidence-summary.md`.
 
