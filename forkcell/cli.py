@@ -356,10 +356,10 @@ def extract_policy_signals(logs: str) -> list[dict[str, str]]:
     return signals
 
 
-def collect_openshell_logs(sandbox_name: str, since: str) -> str:
+def collect_openshell_logs(sandbox_name: str, since: str, *, wait_for_ocsf: bool = True) -> str:
     logs = openshell(["logs", sandbox_name, "-n", "1000", "--since", since], check=False)
     text = (logs.stdout or "") + (logs.stderr or "")
-    if "[OCSF ]" not in strip_ansi(text):
+    if wait_for_ocsf and "[OCSF ]" not in strip_ansi(text):
         time.sleep(0.25)
         logs = openshell(["logs", sandbox_name, "-n", "1000", "--since", since], check=False)
         text = (logs.stdout or "") + (logs.stderr or "")
@@ -1353,7 +1353,11 @@ def run_openshell_volume(args: argparse.Namespace) -> None:
     cmd_result = openshell(create_args, check=False)
     exit_code = effective_openshell_exit_code(cmd_result)
     finished_at = now_iso()
+    log_collection_mode = "sync"
+    log_started = time.perf_counter()
     log_text = collect_openshell_logs(sandbox_name, args.logs_since)
+    log_collect_ms = int(round((time.perf_counter() - log_started) * 1000))
+    sync_logs = True
     delete_result = openshell(["sandbox", "delete", sandbox_name], check=False)
     if not log_text:
         log_text = delete_result.stdout + delete_result.stderr
@@ -1439,6 +1443,7 @@ def run_openshell_volume(args: argparse.Namespace) -> None:
             "revision": policy_revision,
             "path": policy_path,
             "events": summarize_logs(event_text),
+            "log_collection": {"mode": log_collection_mode, "blocking_ms": log_collect_ms, "sync_complete": sync_logs},
             "structured_events": extract_openshell_events(event_text),
             "signals": extract_policy_signals(event_text),
         },
@@ -1589,8 +1594,10 @@ def run_openshell_native_overlay(args: argparse.Namespace) -> None:
     sandbox_lifecycle_ms = int(round((time.perf_counter() - create_started) * 1000))
     exit_code = effective_openshell_exit_code(cmd_result)
     finished_at = now_iso()
+    sync_logs = bool(getattr(args, "sync_logs", False)) or os.environ.get("FORKCELL_SYNC_LOGS") == "1"
+    log_collection_mode = "sync" if sync_logs else "best_effort_async"
     log_started = time.perf_counter()
-    log_text = collect_openshell_logs(sandbox_name, args.logs_since)
+    log_text = collect_openshell_logs(sandbox_name, args.logs_since, wait_for_ocsf=sync_logs)
     log_collect_ms = int(round((time.perf_counter() - log_started) * 1000))
     delete_started = time.perf_counter()
     delete_result = openshell(["sandbox", "delete", sandbox_name], check=False)
@@ -1625,6 +1632,7 @@ def run_openshell_native_overlay(args: argparse.Namespace) -> None:
                 "overlay_reset_ms": overlay_reset_ms,
                 "sandbox_lifecycle_ms": sandbox_lifecycle_ms,
                 "log_collect_ms": log_collect_ms,
+                "log_collection_mode": log_collection_mode,
                 "sandbox_delete_ms": sandbox_delete_ms,
                 "restore_call_ms": restore_call_ms,
                 "total_restore_path_ms": restore_metrics["total_restore_path_ms"],
@@ -1702,6 +1710,7 @@ def run_openshell_native_overlay(args: argparse.Namespace) -> None:
         "timings": {
             "sandbox_lifecycle_ms": sandbox_lifecycle_ms,
             "log_collect_ms": log_collect_ms,
+            "log_collection_mode": log_collection_mode,
             "sandbox_delete_ms": sandbox_delete_ms,
             "overlay_reset_ms": (restore_event.get("metrics", {}) if restore_event else {}).get("overlay_reset_ms"),
             "restore_call_ms": (restore_event.get("metrics", {}) if restore_event else {}).get("restore_call_ms"),
@@ -1712,6 +1721,7 @@ def run_openshell_native_overlay(args: argparse.Namespace) -> None:
             "path": policy_path,
             "sha256": policy_record.get("sha256"),
             "events": summarize_logs(event_text),
+            "log_collection": {"mode": log_collection_mode, "blocking_ms": log_collect_ms, "sync_complete": sync_logs},
             "structured_events": extract_openshell_events(event_text),
             "signals": extract_policy_signals(event_text),
         },
@@ -1866,7 +1876,11 @@ def run_openshell_layer_clone(args: argparse.Namespace) -> None:
     cmd_result = openshell(create_args, check=False)
     exit_code = effective_openshell_exit_code(cmd_result)
     finished_at = now_iso()
+    log_collection_mode = "sync"
+    log_started = time.perf_counter()
     log_text = collect_openshell_logs(sandbox_name, args.logs_since)
+    log_collect_ms = int(round((time.perf_counter() - log_started) * 1000))
+    sync_logs = True
     delete_result = openshell(["sandbox", "delete", sandbox_name], check=False)
     if not log_text:
         log_text = delete_result.stdout + delete_result.stderr
@@ -1947,6 +1961,7 @@ def run_openshell_layer_clone(args: argparse.Namespace) -> None:
             "path": policy_path,
             "sha256": policy_record.get("sha256"),
             "events": summarize_logs(event_text),
+            "log_collection": {"mode": log_collection_mode, "blocking_ms": log_collect_ms, "sync_complete": sync_logs},
             "structured_events": extract_openshell_events(event_text),
             "signals": extract_policy_signals(event_text),
         },
@@ -2258,7 +2273,11 @@ def command_run(args: argparse.Namespace) -> None:
     finished_at = now_iso()
 
     # Capture recent OpenShell logs as the first event source for receipts.
+    log_collection_mode = "sync"
+    log_started = time.perf_counter()
     log_text = collect_openshell_logs(args.cell, args.logs_since)
+    log_collect_ms = int(round((time.perf_counter() - log_started) * 1000))
+    sync_logs = True
     log_artifact = ARTIFACT_DIR / f"{run_id}-openshell.log"
     log_artifact.write_text(log_text)
     event_text = log_text + cmd_result.stdout + cmd_result.stderr
@@ -2312,6 +2331,7 @@ def command_run(args: argparse.Namespace) -> None:
         "policy": {
             "revision": cell.get("active_policy_revision"),
             "events": summarize_logs(event_text),
+            "log_collection": {"mode": log_collection_mode, "blocking_ms": log_collect_ms, "sync_complete": sync_logs},
             "structured_events": extract_openshell_events(event_text),
             "signals": extract_policy_signals(event_text),
         },
@@ -3536,6 +3556,7 @@ def build_parser() -> argparse.ArgumentParser:
     native_run.add_argument("--restore-on-fail", action="store_true")
     native_run.add_argument("--policy", help="policy YAML to pass to OpenShell for this run")
     native_run.add_argument("--logs-since", default="5m")
+    native_run.add_argument("--sync-logs", action="store_true", help="wait briefly for OCSF/log events before writing the receipt")
     native_run.add_argument("--exit-with-command", action="store_true")
     native_run.add_argument("command", nargs=argparse.REMAINDER)
     native_run.set_defaults(func=command_native_run, backend="native-overlay")
@@ -3608,6 +3629,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--strict-checkpoint", action="store_true", help="use strict mode for --checkpoint-before on supported backends")
     run.add_argument("--policy", help="policy YAML to apply on supported backends")
     run.add_argument("--logs-since", default="5m")
+    run.add_argument("--sync-logs", action="store_true", help="wait briefly for OCSF/log events on native-overlay runs")
     run.add_argument("--exit-with-command", action="store_true")
     run.add_argument("command", nargs=argparse.REMAINDER)
     run.set_defaults(func=command_run)

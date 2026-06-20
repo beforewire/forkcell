@@ -100,7 +100,7 @@ class OpenShellNativeOverlayProvider:
         script = f"""
 set -eu
 mkdir -p /workspace/layers/base /workspace/layers/run-upper /workspace/layers/run-work /workspace/layers/merged
-cp -a /src/. /workspace/layers/base/
+(cd /src && tar --exclude='./.env' --exclude='./.env.*' --exclude='*/.env' --exclude='*/.env.*' --exclude='./.ssh' --exclude='./.aws' --exclude='*.pem' --exclude='*.key' -cf - .) | tar -xf - -C /workspace/layers/base
 chown -R -h {SANDBOX_UID}:{SANDBOX_GID} /workspace/layers
 python - <<'PY2'
 import json, os, stat

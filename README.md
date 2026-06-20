@@ -6,7 +6,7 @@ ForkCell is a governed execution-cell layer for AI agents: it adds fast workspac
 
 > Checkpoint -> governed run -> receipt -> accept, restore, or fork.
 
-ForkCell is currently the `v0.1.0-preview` source preview (`0.1.0a1` Python package version). The public-preview branch is intentionally small: it contains the ForkCell control plane, a pinned governed-runtime submodule, a review patch artifact, and the minimum scripts/docs needed to understand and run the preview.
+ForkCell is currently the `v0.1.0a2` preview (`0.1.0a2` Python package version). The public-preview branch is intentionally small: it contains the ForkCell control plane, a pinned governed-runtime submodule, a review patch artifact, and the minimum scripts/docs needed to understand and run the preview.
 
 ## Why ForkCell Exists
 
@@ -93,7 +93,7 @@ Use this path when installing from PyPI:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install forkcell==0.1.0a1
+pip install forkcell==0.1.0a2
 
 mkdir -p workspace
 printf 'hello\n' > workspace/hello.txt
@@ -191,15 +191,21 @@ Stop the gateway when done:
 
 ## Current Preview Metrics
 
-Latest validation for this preview line:
+Latest validation for `0.1.0a2` on macOS + Docker Desktop:
 
-- native overlay `restore_sync_ms`: `0ms` on small, medium, and pruned workspaces, meaning the synchronous generation switch is sub-ms/rounded to zero;
-- native overlay correctness matrix: `7/7` cases passed;
-- native policy smoke: deny host, allow GET, and L7 deny passed;
-- runtime packaging and CI-style gate passed;
-- runtime sandbox lifecycle is still roughly hundreds of milliseconds, so only the synchronous restore substrate should be described as sub-ms/`0ms`.
+| backend | scenario | files | MiB | checkpoint | restore | full restore path | correctness |
+|---|---|---:|---:|---:|---:|---:|---|
+| `native-overlay` | small repo | 500 | 1.0 | 0ms | 0ms | 550ms | 1/1 |
+| `native-overlay` | medium webapp | 2408 | 13.4 | 0ms | 0ms | 445ms | 1/1 |
+| `native-overlay` | dependency/cache | 6024 | 32.8 | 0ms | 0ms | 490ms | 1/1 |
+| `volume-delta` | dependency/cache | 6024 | 32.8 | 679ms | 418ms | n/a | 1/1 |
+| `local-overlay` | dependency/cache | 6024 | 32.8 | 221ms | 243ms | n/a | 1/1 |
 
-Fresh README-path validation on macOS + Docker also produced a tiny-workspace receipt with `checkpoint duration: 0ms`, `restore duration: 0ms`, `restore_sync_ms: 0ms`, and `total_restore_path_ms: 726ms`. The latter includes runtime sandbox delete/lifecycle and log collection, not just ForkCell's restore substrate.
+Notes:
+
+- `native-overlay` still reports `restore_sync_ms=0ms`; this means the synchronous workspace generation switch is sub-ms/rounded to zero.
+- `total_restore_path_ms` includes OpenShell sandbox lifecycle and delete, but log collection now defaults to best-effort non-blocking mode. Use `--sync-logs` when a policy test needs to wait briefly for OCSF/log events.
+- The source preview also validates secret-file exclusion for common local secret paths (`.env`, `.env.*`, `.ssh`, `.aws`, `*.pem`, `*.key`) and receipt/checkpoint policy binding.
 
 A sanitized evidence summary is in `docs/evidence-summary.md`.
 
@@ -236,4 +242,4 @@ ForkCell is part of BeforeWire's agent-trust infrastructure work: make agent exe
 
 ## Status
 
-`v0.1.0-preview` / `0.1.0a1` is experimental. The preview is intended to show the product boundary and the working checkpoint/restore/receipt path before the project is promoted to a broader public release.
+`v0.1.0a2` is experimental. The preview is intended to show the product boundary and the working checkpoint/restore/receipt path before the project is promoted to a broader public release.

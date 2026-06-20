@@ -23,7 +23,7 @@ It verifies:
 Run this before or after publishing a PyPI preview package:
 
 ```bash
-FORKCELL_PACKAGE_SPEC=forkcell==0.1.0a1 ./scripts/validate_pypi_quickstart.sh
+FORKCELL_PACKAGE_SPEC=forkcell==0.1.0a2 ./scripts/validate_pypi_quickstart.sh
 ```
 
 It verifies the package-only path: install from PyPI, initialize a local overlay
@@ -39,6 +39,24 @@ Run the local benchmark matrix when evaluating performance changes:
 
 Use `FORKCELL_BENCH_PROFILES="tiny small medium"` for a broader run. See
 `docs/benchmark-matrix.md` for metric definitions and interpretation.
+
+Run representative agent-workspace scenarios when changing restore behavior:
+
+```bash
+python3 scripts/benchmark_typical_scenarios.py --backend local-overlay --iterations 1
+python3 scripts/benchmark_typical_scenarios.py --backend native-overlay --iterations 1
+python3 scripts/benchmark_typical_scenarios.py --backend volume-delta --iterations 1
+```
+
+## Security And Binding Smoke
+
+Run this before packaging or publishing:
+
+```bash
+python3 scripts/validate_security_bindings.py
+```
+
+It verifies common secret-file exclusion, restore correctness, and policy-bound checkpoint identity / receipt binding behavior.
 
 ## Source Runtime Demo
 

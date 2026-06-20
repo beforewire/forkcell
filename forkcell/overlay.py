@@ -88,7 +88,7 @@ class DockerOverlayProvider:
         script = """
 set -eu
 mkdir -p /demo/base /demo/layers /demo/active/upper /demo/active/work /demo/active/merged
-cp -a /src/. /demo/base/
+(cd /src && tar --exclude='./.env' --exclude='./.env.*' --exclude='*/.env' --exclude='*/.env.*' --exclude='./.ssh' --exclude='./.aws' --exclude='*.pem' --exclude='*.key' -cf - .) | tar -xf - -C /demo/base
 python - <<'PY2'
 import json, os
 root='/demo/base'

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PACKAGE_SPEC="${FORKCELL_PACKAGE_SPEC:-forkcell==0.1.0a1}"
+PACKAGE_SPEC="${FORKCELL_PACKAGE_SPEC:-forkcell==0.1.0a2}"
 WORKDIR="${FORKCELL_PYPI_SMOKE_DIR:-$(mktemp -d /tmp/forkcell-pypi-smoke.XXXXXX)}"
 PYTHON_BIN="${PYTHON:-python3}"
 

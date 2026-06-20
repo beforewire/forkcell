@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "forkcell"
-version = "0.1.0a1"
+version = "0.1.0a2"
 description = "Governed execution cells for AI agents, with rollback and receipts"
 readme = "README.md"
 requires-python = ">=3.11"

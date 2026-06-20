@@ -92,7 +92,7 @@ class DockerVolumeWorkspaceProvider:
         script = f"""
 set -eu
 mkdir -p /data/work /data/store/objects /data/checkpoints
-cp -a /src/. /data/work/
+(cd /src && tar --exclude='./.env' --exclude='./.env.*' --exclude='*/.env' --exclude='*/.env.*' --exclude='./.ssh' --exclude='./.aws' --exclude='*.pem' --exclude='*.key' -cf - .) | tar -xf - -C /data/work
 chown -R -h {SANDBOX_UID}:{SANDBOX_GID} /data/work
 python - <<'PY2'
 import json, os, stat
