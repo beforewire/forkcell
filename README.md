@@ -6,7 +6,7 @@ ForkCell is a governed execution-cell layer for AI agents: it adds fast workspac
 
 > Checkpoint -> governed run -> receipt -> accept, restore, or fork.
 
-ForkCell is currently the `v0.1.0-preview` source preview (`0.1.0a0` Python package version). The public-preview branch is intentionally small: it contains the ForkCell control plane, a pinned governed-runtime submodule, a review patch artifact, and the minimum scripts/docs needed to understand and run the preview.
+ForkCell is currently the `v0.1.0-preview` source preview (`0.1.0a1` Python package version). The public-preview branch is intentionally small: it contains the ForkCell control plane, a pinned governed-runtime submodule, a review patch artifact, and the minimum scripts/docs needed to understand and run the preview.
 
 ## Why ForkCell Exists
 
@@ -77,14 +77,52 @@ In this preview, OpenShell provides the runtime enforcement layer:
 
 See `patches/openshell.lock` and `docs/openshell-native-fast-substrate.md`.
 
-## Quickstart
+## Install Paths
+
+ForkCell has two preview install paths:
+
+- **PyPI package path** installs the Python CLI/API only. Use it for the local overlay rollback demo below.
+- **Source runtime path** clones this repository with submodules. Use it for the full patched OpenShell governed-runtime demo.
+
+The PyPI package does **not** include `scripts/`, `patches/`, or the `upstream/openshell` submodule. Those files are available from the GitHub source repository.
+
+## PyPI Quickstart
+
+Use this path when installing from PyPI:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install forkcell==0.1.0a1
+
+mkdir -p workspace
+printf 'hello\n' > workspace/hello.txt
+
+forkcell overlay init demo --from workspace
+forkcell overlay run --checkpoint-before --restore-on-fail demo -- \
+  sh -lc 'echo changed > hello.txt; exit 7'
+
+cat workspace/hello.txt
+forkcell receipt show --cell demo --latest --format md
+```
+
+The command intentionally exits with status `7`. Success means ForkCell records
+`Decision: restored` in the receipt and the final `cat` prints `hello`.
+
+This path uses the local overlay rollback backend. It demonstrates checkpoint,
+restore, and receipt semantics, but it does not start the patched OpenShell
+runtime or enforce OpenShell network/credential policy.
+
+## Source Runtime Quickstart
+
+Use this path for the full ForkCell + patched OpenShell runtime preview.
 
 Prerequisites:
 
 - macOS or Linux host with Docker available;
 - Python 3.11+;
 - Rust/Cargo for building OpenShell CLI/gateway;
-- access to the `beforewire/openshell` submodule.
+- access to the public `beforewire/openshell` submodule.
 
 Clone with submodules:
 
@@ -196,4 +234,4 @@ ForkCell is part of BeforeWire's agent-trust infrastructure work: make agent exe
 
 ## Status
 
-`v0.1.0-preview` / `0.1.0a0` is experimental. The preview is intended to show the product boundary and the working checkpoint/restore/receipt path before the project is promoted to a broader public release.
+`v0.1.0-preview` / `0.1.0a1` is experimental. The preview is intended to show the product boundary and the working checkpoint/restore/receipt path before the project is promoted to a broader public release.

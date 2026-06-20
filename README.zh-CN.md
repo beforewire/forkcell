@@ -6,7 +6,7 @@ ForkCell 是面向 AI Agent 的 governed execution cell 控制层：它把一次
 
 > checkpoint -> governed run -> receipt -> accept / restore / fork
 
-当前仓库是 `v0.1.0-preview` source preview（Python package version 为 `0.1.0a0`）。这个 preview 分支刻意保持精简：只包含 ForkCell 控制面、固定版本的 governed-runtime submodule、runtime patch provenance，以及足够让用户理解和跑通的文档/脚本。
+当前仓库是 `v0.1.0-preview` source preview（Python package version 为 `0.1.0a1`）。这个 preview 分支刻意保持精简：只包含 ForkCell 控制面、固定版本的 governed-runtime submodule、runtime patch provenance，以及足够让用户理解和跑通的文档/脚本。
 
 ## 为什么需要 ForkCell
 
@@ -68,14 +68,52 @@ commit:  393c25a86d9128ff5e38ecf537809efe58470266
 
 在当前 preview 中，OpenShell 提供 runtime enforcement：sandbox lifecycle、process/filesystem policy、egress/L7 policy、credential/provider path、OCSF/log events。
 
-## Quickstart
+## 安装路径
+
+ForkCell 当前有两种 preview 使用路径：
+
+- **PyPI package path**：只安装 Python CLI/API，适合先跑本地 overlay rollback demo。
+- **Source runtime path**：clone GitHub 仓库并初始化 submodule，适合跑完整 patched OpenShell governed-runtime demo。
+
+PyPI package 不包含 `scripts/`、`patches/`、`upstream/openshell` submodule；这些内容只在 GitHub source repository 中提供。
+
+## PyPI Quickstart
+
+如果你通过 PyPI 安装，使用这条路径：
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install forkcell==0.1.0a1
+
+mkdir -p workspace
+printf 'hello\n' > workspace/hello.txt
+
+forkcell overlay init demo --from workspace
+forkcell overlay run --checkpoint-before --restore-on-fail demo -- \
+  sh -lc 'echo changed > hello.txt; exit 7'
+
+cat workspace/hello.txt
+forkcell receipt show --cell demo --latest --format md
+```
+
+这个命令会故意 `exit 7`。成功标准不是 command exit 0，而是：
+
+- receipt 中出现 `Decision: restored`；
+- 最终 `cat workspace/hello.txt` 输出 `hello`。
+
+这条路径使用本地 overlay rollback backend，可以展示 checkpoint、restore、receipt 语义，但不会启动 patched OpenShell runtime，也不会启用 OpenShell network/credential policy enforcement。
+
+## Source Runtime Quickstart
+
+如果要运行完整 ForkCell + patched OpenShell runtime preview，使用这条路径。
 
 前置条件：
 
 - macOS 或 Linux host，Docker 可用；
 - Python 3.11+；
 - Rust/Cargo，用于 build OpenShell CLI/gateway；
-- 能访问 `beforewire/openshell` submodule。
+- 能访问 public `beforewire/openshell` submodule。
 
 Clone：
 
@@ -193,4 +231,4 @@ ForkCell 是 BeforeWire agent-trust infrastructure 方向的一部分：让 agen
 
 ## 状态
 
-`v0.1.0-preview` / `0.1.0a0` 是实验性版本。这个 preview 用于展示产品边界，以及 checkpoint / restore / receipt 这条 working path。后续会继续补充更完整的运行时矩阵、验证门禁和示例场景。
+`v0.1.0-preview` / `0.1.0a1` 是实验性版本。这个 preview 用于展示产品边界，以及 checkpoint / restore / receipt 这条 working path。后续会继续补充更完整的运行时矩阵、验证门禁和示例场景。
