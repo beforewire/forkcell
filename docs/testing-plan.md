@@ -17,6 +17,40 @@ It verifies:
 - no raw `docs/evidence/` files tracked;
 - no obvious local path/private key markers in public files.
 
+
+## PyPI Path Smoke
+
+Run this before or after publishing a PyPI preview package:
+
+```bash
+FORKCELL_PACKAGE_SPEC=forkcell==0.1.0a1 ./scripts/validate_pypi_quickstart.sh
+```
+
+It verifies the package-only path: install from PyPI, initialize a local overlay
+cell, run a failing command, restore the workspace, and inspect the receipt.
+
+## Benchmark Matrix
+
+Run the local benchmark matrix when evaluating performance changes:
+
+```bash
+./scripts/benchmark_matrix.sh
+```
+
+Use `FORKCELL_BENCH_PROFILES="tiny small medium"` for a broader run. See
+`docs/benchmark-matrix.md` for metric definitions and interpretation.
+
+## Source Runtime Demo
+
+Run the one-command source runtime path when Docker and Rust are available:
+
+```bash
+./scripts/run_source_runtime_demo.sh
+```
+
+Use `FORKCELL_SKIP_RUNTIME_BUILD=1` when the patched runtime binaries are already
+installed under `.forkcell/runtime/native-overlay`.
+
 ## Runtime Integration
 
 Maintainer-only integration path:

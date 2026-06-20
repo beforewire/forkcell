@@ -223,6 +223,8 @@ README 路径下的 tiny workspace demo 曾产生：
 - `docs/architecture.md`：产品边界和 control-plane architecture；
 - `docs/openshell-native-fast-substrate.md`：OpenShell workspace substrate design；
 - `docs/testing-plan.md`：preview smoke 和 integration validation plan；
+- `docs/benchmark-matrix.md`：benchmark matrix 和 performance breakdown guide；
+- `docs/rust-core-boundary.md`：Rust core decision boundary；
 - `docs/evidence-summary.md`：sanitized validation summary。
 
 ## About BeforeWire

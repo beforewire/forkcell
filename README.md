@@ -226,6 +226,8 @@ In this preview, `native-overlay`, `layer-clone`, and `volume-delta` are backed 
 - `docs/architecture.md` - product boundary and control-plane architecture.
 - `docs/openshell-native-fast-substrate.md` - OpenShell workspace substrate design.
 - `docs/testing-plan.md` - preview smoke and integration validation plan.
+- `docs/benchmark-matrix.md` - benchmark matrix and performance breakdown guide.
+- `docs/rust-core-boundary.md` - Rust core decision boundary.
 - `docs/evidence-summary.md` - sanitized validation summary.
 
 ## About BeforeWire
