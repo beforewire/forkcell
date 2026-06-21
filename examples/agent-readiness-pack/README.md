@@ -42,6 +42,8 @@ Current packet and control coverage:
 - Tamper-negative test that edits a receipt and confirms the verifier fails.
 - PR-specific GitHub Actions workflow that regenerates and verifies the receipt
   on `pull_request` / `workflow_dispatch`.
+- Receipt-backed PR comment broker that posts a readiness summary to the PR using
+  an approval receipt and stable idempotency key.
 
 ## Current External Limitation
 
@@ -94,6 +96,7 @@ Run focused controls:
 .venv/bin/python bin/run_broker_dryrun.py
 .venv/bin/python bin/run_replay_fixture.py
 .venv/bin/python bin/run_tamper_negative.py
+.venv/bin/python bin/post_pr_readiness_comment.py --repo beforewire/forkcell --pr-number 1 --dry-run
 .venv/bin/python bin/run_openshell_live_smoke.py
 .venv/bin/python bin/verify_branch_protection_gate.py --repo beforewire/forkcell
 ```
@@ -101,7 +104,7 @@ Run focused controls:
 Run strict acceptance and try to configure the required-check ruleset when the GitHub API allows it:
 
 ```bash
-.venv/bin/python bin/run_acceptance.py --repo ../.. --github-repo beforewire/forkcell --configure-branch-protection
+.venv/bin/python bin/run_acceptance.py --repo ../.. --github-repo beforewire/forkcell --pr-number 1 --configure-branch-protection
 ```
 
 Verify the required-check gate without mutating GitHub state:
@@ -114,7 +117,7 @@ Run local PLG acceptance while preserving the strict external blocker in a
 separate output file:
 
 ```bash
-.venv/bin/python bin/run_acceptance.py --repo ../.. --github-repo beforewire/forkcell \
+.venv/bin/python bin/run_acceptance.py --repo ../.. --github-repo beforewire/forkcell --pr-number 1 \
   --allow-external-unavailable \
   --output results/acceptance-local-results.json
 ```
@@ -137,12 +140,16 @@ separate output file:
 - `results/broker-dryrun-results.json`: side-effect broker dry-run receipts.
 - `results/replay-fixture-results.json`: action trace and approval replay proof.
 - `results/tamper-negative-results.json`: receipt tamper-negative proof.
+- `results/pr-comment-broker-results.json`: PR comment broker evidence, including
+  idempotency key and approval receipt reference.
 - `results/openshell-live-smoke.json`: live OpenShell sandbox evidence.
 - `results/branch-protection-gate.json`: required-check enforcement evidence or
   external blocker evidence.
 - `results/acceptance-results.json`: strict merge-blocking acceptance.
 - `results/acceptance-local-results.json`: optional local PLG acceptance.
 - `receipts/readiness-receipt.json`: CI-verifiable readiness receipt.
+- `receipts/pr-comment-approval-receipt.json`: approval receipt that authorizes
+  the low-risk PR readiness summary comment.
 - `github/beforewire-agent-gate.yml`: GitHub Actions gate source.
 - `.github/workflows/beforewire-agent-gate.yml`: installed PR workflow in the
   repository root.
@@ -150,9 +157,11 @@ separate output file:
 ## CI Gate
 
 The installed workflow is named `beforewire-agent-gate` and its job is named
-`BeforeWire Agent Gate`. On every PR it bootstraps the pack, reruns
-`bin/run_readiness_pack.py --repo ../..`, verifies the freshly generated receipt,
-and uploads the evidence artifacts.
+`BeforeWire Agent Gate`. On every same-repository PR it bootstraps the pack,
+reruns `bin/run_readiness_pack.py --repo ../..`, verifies the freshly generated
+receipt, posts a readiness summary PR comment through the broker, and uploads
+the evidence artifacts. Fork PRs keep the required-check receipt gate but skip
+the comment side effect because GitHub tokens are read-only there.
 
 To make it merge-blocking, enable branch protection or a repository ruleset and
 require the `BeforeWire Agent Gate` check. The local acceptance runner can attempt

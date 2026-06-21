@@ -6,6 +6,8 @@ on:
 
 permissions:
   contents: read
+  issues: write
+  pull-requests: read
 
 jobs:
   verify-agent-readiness:
@@ -29,6 +31,18 @@ jobs:
         run: |
           cd examples/agent-readiness-pack
           python bin/verify_readiness_receipt.py receipts/readiness-receipt.json
+      - name: Post readiness PR comment
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          cd examples/agent-readiness-pack
+          python bin/post_pr_readiness_comment.py \
+            --repo "${{ github.repository }}" \
+            --pr-number "${{ github.event.pull_request.number }}" \
+            --receipt receipts/readiness-receipt.json \
+            --allow-permission-skip
       - name: Upload readiness artifacts
         uses: actions/upload-artifact@v4
         if: always()

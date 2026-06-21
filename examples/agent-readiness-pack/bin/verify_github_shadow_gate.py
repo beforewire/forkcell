@@ -61,10 +61,12 @@ def verify(path: Path) -> dict[str, Any]:
     checks["has_pull_request_or_manual_trigger"] = isinstance(on_block, dict) and (
         "pull_request" in on_block or "workflow_dispatch" in on_block
     )
-    checks["contents_read_only"] = permissions == {"contents": "read"}
+    checks["least_privilege_permissions"] = permissions == {"contents": "read", "issues": "write", "pull-requests": "read"}
     checks["bootstraps_readiness_pack"] = "bootstrap_readiness_pack.py" in all_runs
     checks["generates_pr_specific_receipt"] = "bin/run_readiness_pack.py --repo ../.." in all_runs
     checks["verifies_readiness_receipt"] = "verify_readiness_receipt.py" in all_runs
+    checks["posts_receipt_pr_comment"] = "post_pr_readiness_comment.py" in all_runs and "GITHUB_TOKEN" in text
+    checks["comment_limited_to_same_repo_prs"] = "github.event.pull_request.head.repo.full_name == github.repository" in text
     checks["uploads_readiness_artifact"] = "actions/upload-artifact@v4" in text
     checks["does_not_configure_branch_protection"] = "branch_protection" not in text and "required_status_checks" not in text
     checks["job_is_blocking_when_required"] = True

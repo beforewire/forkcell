@@ -51,6 +51,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Run full BeforeWire readiness acceptance")
     parser.add_argument("--repo", default="../..")
     parser.add_argument("--github-repo", default="beforewire/forkcell")
+    parser.add_argument("--pr-number", default="1")
     parser.add_argument("--skip-openshell-live", action="store_true")
     parser.add_argument(
         "--allow-external-unavailable",
@@ -84,6 +85,18 @@ def main() -> int:
             ),
             ("readiness_pack_final", [py, "bin/run_readiness_pack.py", "--repo", args.repo]),
             ("receipt_verify", [py, "bin/verify_readiness_receipt.py", "receipts/readiness-receipt.json"]),
+            (
+                "pr_comment_broker_dryrun",
+                [
+                    py,
+                    "bin/post_pr_readiness_comment.py",
+                    "--repo",
+                    args.github_repo,
+                    "--pr-number",
+                    args.pr_number,
+                    "--dry-run",
+                ],
+            ),
         ]
     )
     results = [run(name, cmd) for name, cmd in steps]
@@ -96,6 +109,7 @@ def main() -> int:
         "live_action_packets": read_status("results/live-action-packet-results.json"),
         "replay_fixture": read_status("results/replay-fixture-results.json"),
         "tamper_negative": read_status("results/tamper-negative-results.json"),
+        "pr_comment_broker": read_status("results/pr-comment-broker-results.json"),
         "openshell_live_smoke": read_status("results/openshell-live-smoke.json"),
         "branch_protection_gate": read_status("results/branch-protection-gate.json"),
     }
@@ -115,6 +129,7 @@ def main() -> int:
                 "live_action_packets",
                 "replay_fixture",
                 "tamper_negative",
+                "pr_comment_broker",
             ]
         )
         and (args.skip_openshell_live or status_map.get("openshell_live_smoke") == "pass"),
