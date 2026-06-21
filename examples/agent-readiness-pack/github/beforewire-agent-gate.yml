@@ -34,7 +34,7 @@ jobs:
       - name: Post readiness PR comment
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.BEFOREWIRE_PR_COMMENT_TOKEN || secrets.GITHUB_TOKEN }}
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           cd examples/agent-readiness-pack
