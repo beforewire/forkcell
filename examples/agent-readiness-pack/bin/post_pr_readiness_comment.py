@@ -200,6 +200,11 @@ def main() -> int:
     parser.add_argument("--approval-output", default="receipts/pr-comment-approval-receipt.json")
     parser.add_argument("--output", default="results/pr-comment-broker-results.json")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--allow-permission-skip",
+        action="store_true",
+        help="Return pass with a skipped operation when the GitHub token cannot write issue comments.",
+    )
     args = parser.parse_args()
 
     receipt_path = PACK_ROOT / args.receipt
@@ -249,10 +254,23 @@ def main() -> int:
         if not token:
             broker_result.update({"status": "fail", "operation": "skipped", "reason": "GITHUB_TOKEN missing"})
         else:
-            commit = upsert_comment(args.repo, pr_number, token, body, idempotency_key)
-            broker_result.update(commit)
-            broker_result["external_call_performed"] = True
-            broker_result["status"] = "pass"
+            try:
+                commit = upsert_comment(args.repo, pr_number, token, body, idempotency_key)
+                broker_result.update(commit)
+                broker_result["external_call_performed"] = True
+                broker_result["status"] = "pass"
+            except RuntimeError as exc:
+                if args.allow_permission_skip and "Resource not accessible by integration" in str(exc):
+                    broker_result.update(
+                        {
+                            "status": "pass",
+                            "operation": "skipped_permission_denied",
+                            "reason": "workflow token cannot write issue comments",
+                            "external_call_performed": False,
+                        }
+                    )
+                else:
+                    broker_result.update({"status": "fail", "operation": "failed", "reason": str(exc)})
 
     output_path = PACK_ROOT / args.output
     write_json(output_path, broker_result)

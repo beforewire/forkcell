@@ -41,7 +41,8 @@ jobs:
           python bin/post_pr_readiness_comment.py \
             --repo "${{ github.repository }}" \
             --pr-number "${{ github.event.pull_request.number }}" \
-            --receipt receipts/readiness-receipt.json
+            --receipt receipts/readiness-receipt.json \
+            --allow-permission-skip
       - name: Upload readiness artifacts
         uses: actions/upload-artifact@v4
         if: always()
