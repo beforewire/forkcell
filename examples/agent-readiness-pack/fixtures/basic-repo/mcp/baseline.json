@@ -1,0 +1,1 @@
+{"mcpServers":{"github":{"command":"npx","args":["-y","@modelcontextprotocol/server-github"],"tools":{"create_issue":{"description":"Create a GitHub issue"}}}}}

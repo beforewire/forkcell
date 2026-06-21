@@ -1,0 +1,23 @@
+schema_version: beforewire.packet.v1
+id: BW-P012-broker-dryrun-side-effect
+title: Broker side-effect commit stays dry-run and emits a receipt
+mode: shadow-readonly
+surfaces: [broker, github, deploy, slack, receipt]
+action_intent:
+  actor: codex
+  primitive: broker.commit
+  resource: broker:external-side-effect
+  right: execute
+  dry_run: true
+  idempotency_key: beforewire-broker-dryrun
+  targets:
+    - github.pr_comment
+    - github.issue_create
+    - deploy.trigger
+    - slack.message
+expected:
+  agt_effect: allow
+  openshell_effect: allow
+  risk_labels: [broker_dry_run, side_effect_receipt, no_external_commit]
+  side_effect_performed: false
+  receipt_fields: [broker.idempotency_key, broker.dry_run, broker.targets, broker.receipt_hash]

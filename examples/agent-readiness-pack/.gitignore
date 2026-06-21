@@ -1,0 +1,14 @@
+.venv/
+.uv-cache/
+deps/agent-governance-toolkit/
+deps/OpenShell/
+deps/opa/
+__pycache__/
+bin/__pycache__/
+logs/
+results/
+receipts/
+inventory.json
+risk-map.json
+fixtures/tamper/readiness-receipt.tampered.json
+fixtures/replay/action-trace.json

@@ -1,0 +1,16 @@
+schema_version: beforewire.packet.v1
+id: BW-P010-receipt-tamper-verify
+title: Receipt tampering is detected by verifier
+mode: shadow-readonly
+surfaces: [receipt, ci]
+action_intent:
+  actor: verifier
+  primitive: receipt.verify
+  resource: receipt:readiness
+  right: read
+  tamper_field: policy.effect
+expected:
+  agt_effect: deny
+  openshell_effect: deny
+  risk_labels: [receipt_tamper, verifier_gate]
+  side_effect_performed: false

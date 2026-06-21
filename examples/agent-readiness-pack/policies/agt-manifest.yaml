@@ -1,0 +1,21 @@
+agent_control_specification_version: "0.3.1-beta"
+metadata:
+  name: beforewire-agent-readiness
+  mode: shadow-readonly
+policies:
+  beforewire_action_policy:
+    type: rego
+    bundle: .
+    query: data.beforewire.agent_gate.verdict
+intervention_points:
+  pre_tool_call:
+    policy_target: "$.tool_call.args"
+    policy_target_kind: action_intent
+    tool_name_from: "$.tool_call.name"
+    policy:
+      id: beforewire_action_policy
+tools:
+  beforewire_action:
+    type: Tool
+    id: beforewire_action
+    clearance: internal

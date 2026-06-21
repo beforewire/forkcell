@@ -1,0 +1,21 @@
+[
+  {
+    "name": "agent-governance-toolkit",
+    "path": "deps/agent-governance-toolkit",
+    "commit": "5272a1b0cda9e8b7740f4805f7d638bb0d373beb",
+    "remote": "https://github.com/microsoft/agent-governance-toolkit.git"
+  },
+  {
+    "name": "OpenShell",
+    "path": "deps/OpenShell",
+    "commit": "f23c2c8e84193beac5c35af8cd80276b60b8dbd4",
+    "remote": "https://github.com/NVIDIA/OpenShell.git"
+  },
+  {
+    "name": "open-policy-agent-opa",
+    "path": "deps/opa/opa",
+    "version": "1.17.1",
+    "download_url": "https://openpolicyagent.org/downloads/latest/opa_darwin_arm64_static",
+    "sha256": "sha256:9d43153a802b5befd3f1c4f76b301d135aaf8e2153a4de921a9426e0ccc00eb8"
+  }
+]

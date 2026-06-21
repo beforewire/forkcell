@@ -1,0 +1,42 @@
+name: beforewire-agent-gate
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-agent-readiness:
+    name: BeforeWire Agent Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Bootstrap readiness pack
+        run: |
+          python -m pip install --upgrade pip
+          python examples/agent-readiness-pack/bin/bootstrap_readiness_pack.py \
+            --install-python-deps
+      - name: Generate PR-specific readiness receipt
+        run: |
+          cd examples/agent-readiness-pack
+          python bin/run_readiness_pack.py --repo ../..
+      - name: Verify generated readiness receipt
+        run: |
+          cd examples/agent-readiness-pack
+          python bin/verify_readiness_receipt.py receipts/readiness-receipt.json
+      - name: Upload readiness artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: beforewire-agent-readiness-${{ github.event.pull_request.number || github.run_id }}
+          path: |
+            examples/agent-readiness-pack/inventory.json
+            examples/agent-readiness-pack/risk-map.json
+            examples/agent-readiness-pack/results/*.json
+            examples/agent-readiness-pack/receipts/*.json
+            examples/agent-readiness-pack/logs/*.log
