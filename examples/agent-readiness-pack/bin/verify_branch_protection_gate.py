@@ -82,6 +82,32 @@ def upsert_required_check_ruleset(repo: str, rulesets: dict[str, Any], ruleset_n
     return run_with_json(["gh", "api", "-X", "POST", f"repos/{repo}/rulesets", "--input", "-"], body)
 
 
+def fetch_ruleset_details(repo: str, rulesets: dict[str, Any]) -> list[dict[str, Any]]:
+    parsed = parse_json_output(rulesets)
+    if not isinstance(parsed, list):
+        return []
+    details = []
+    for row in parsed:
+        if not isinstance(row, dict) or not row.get("id"):
+            continue
+        details.append(run(["gh", "api", f"repos/{repo}/rulesets/{row['id']}"]))
+    return details
+
+
+def ruleset_detail_has_required_check(detail: dict[str, Any], required_check: str) -> bool:
+    parsed = parse_json_output(detail)
+    if not isinstance(parsed, dict):
+        return required_check in (detail.get("output") or "")
+    for rule in parsed.get("rules") or []:
+        if not isinstance(rule, dict) or rule.get("type") != "required_status_checks":
+            continue
+        params = rule.get("parameters") or {}
+        for check in params.get("required_status_checks") or []:
+            if isinstance(check, dict) and check.get("context") == required_check:
+                return True
+    return False
+
+
 def write_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -107,8 +133,11 @@ def main() -> int:
         default_branch = data["defaultBranchRef"]["name"]
     protection = run(["gh", "api", f"repos/{args.repo}/branches/{default_branch}/protection"])
     rulesets = run(["gh", "api", f"repos/{args.repo}/rulesets"])
+    ruleset_details = fetch_ruleset_details(args.repo, rulesets)
     unavailable = "Upgrade to GitHub Pro" in protection["output"] or "Upgrade to GitHub Pro" in rulesets["output"]
-    required_present = args.required_check in protection["output"] or args.required_check in rulesets["output"]
+    required_present = args.required_check in protection["output"] or any(
+        ruleset_detail_has_required_check(detail, args.required_check) for detail in ruleset_details
+    )
     configure_attempt: dict[str, Any] | None = None
     if args.configure and not required_present:
         if unavailable:
@@ -121,8 +150,11 @@ def main() -> int:
             # Re-read authoritative state after the mutating API call.
             protection = run(["gh", "api", f"repos/{args.repo}/branches/{default_branch}/protection"])
             rulesets = run(["gh", "api", f"repos/{args.repo}/rulesets"])
+            ruleset_details = fetch_ruleset_details(args.repo, rulesets)
             unavailable = "Upgrade to GitHub Pro" in protection["output"] or "Upgrade to GitHub Pro" in rulesets["output"]
-            required_present = args.required_check in protection["output"] or args.required_check in rulesets["output"]
+            required_present = args.required_check in protection["output"] or any(
+                ruleset_detail_has_required_check(detail, args.required_check) for detail in ruleset_details
+            )
     payload = {
         "schema": "beforewire.branch-protection-gate.v1",
         "generated_at": utc_now(),
@@ -135,6 +167,7 @@ def main() -> int:
         "repo_view": repo_view,
         "branch_protection": protection,
         "rulesets": rulesets,
+        "ruleset_details": ruleset_details,
         "checks": {
             "gh_authenticated": repo_view["exit_code"] == 0,
             "branch_protection_api_available": protection["exit_code"] == 0 or not unavailable,
