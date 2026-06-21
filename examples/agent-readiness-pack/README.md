@@ -161,7 +161,10 @@ The installed workflow is named `beforewire-agent-gate` and its job is named
 reruns `bin/run_readiness_pack.py --repo ../..`, verifies the freshly generated
 receipt, posts a readiness summary PR comment through the broker, and uploads
 the evidence artifacts. Fork PRs keep the required-check receipt gate but skip
-the comment side effect because GitHub tokens are read-only there.
+the comment side effect because GitHub tokens are read-only there. If the
+organization disables workflow token write permissions, set a fine-grained
+`BEFOREWIRE_PR_COMMENT_TOKEN` repository secret with issue comment write access;
+the workflow uses that token before falling back to `GITHUB_TOKEN`.
 
 To make it merge-blocking, enable branch protection or a repository ruleset and
 require the `BeforeWire Agent Gate` check. The local acceptance runner can attempt
