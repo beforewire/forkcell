@@ -201,6 +201,7 @@ def main() -> int:
     parser.add_argument("--credentials", default="fixtures/openshell-credentials.yaml")
     parser.add_argument("--registry", default="deps/OpenShell/crates/openshell-prover/registry")
     parser.add_argument("--output", default="results/openshell-policy-validation.json")
+    parser.add_argument("--require-prover", action="store_true", help="Fail if openshell policy prove is unavailable.")
     args = parser.parse_args()
 
     policy_path = PACK_ROOT / args.policy
@@ -210,7 +211,14 @@ def main() -> int:
     schema_errors, network_matrix = validate_schema(policy)
     prover = run_policy_prover(policy_path, credentials_path, registry_path)
     schema_status = "pass" if not schema_errors else "fail"
-    shadow_apply_status = "ready_to_apply" if schema_status == "pass" and prover.get("status") == "pass" else "review"
+    prover_status = prover.get("status")
+    prover_ok = prover_status == "pass" or (prover_status == "skip" and not args.require_prover)
+    if schema_status == "pass" and prover_status == "pass":
+        shadow_apply_status = "ready_to_apply"
+    elif schema_status == "pass" and prover_status == "skip" and not args.require_prover:
+        shadow_apply_status = "schema_valid_prover_unavailable"
+    else:
+        shadow_apply_status = "review"
     payload = {
         "schema": "beforewire.openshell-policy-validation.v1",
         "generated_at": utc_now(),
@@ -227,7 +235,7 @@ def main() -> int:
             "network_matrix": network_matrix,
         },
     }
-    payload["status"] = "pass" if schema_status == "pass" and prover.get("status") == "pass" else "fail"
+    payload["status"] = "pass" if schema_status == "pass" and prover_ok else "fail"
     output = PACK_ROOT / args.output
     write_json(output, payload)
     print(json.dumps({"status": payload["status"], "schema": schema_status, "prover": prover.get("status"), "shadow_apply": shadow_apply_status, "output": args.output}, indent=2))
